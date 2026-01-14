@@ -2,10 +2,12 @@
 
 import os
 import json
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from google.cloud import texttospeech
 from google.oauth2 import service_account
+from pydub import AudioSegment
 
 
 class AudioGenerator:
@@ -178,32 +180,38 @@ class AudioGenerator:
         print(f"Script length: {script_length:,} characters ({len(script.split())} words)")
 
         try:
-            # Configure synthesis input
-            synthesis_input = texttospeech.SynthesisInput(text=script)
+            # Split script into chunks if needed (TTS limit is 5000 bytes)
+            chunks = self._split_script(script, max_bytes=4900)
+            print(f"Split into {len(chunks)} chunk(s)")
 
-            # Configure voice
-            voice = texttospeech.VoiceSelectionParams(
-                language_code='en-US',
-                name=voice_name
-            )
+            if len(chunks) == 1:
+                # Single chunk - process normally
+                response = self._synthesize_chunk(script, voice_name)
+                with open(output_path, 'wb') as out:
+                    out.write(response.audio_content)
+            else:
+                # Multiple chunks - synthesize each and concatenate
+                temp_files = []
+                for i, chunk in enumerate(chunks, 1):
+                    print(f"  Generating chunk {i}/{len(chunks)}...")
+                    response = self._synthesize_chunk(chunk, voice_name)
 
-            # Configure audio
-            audio_config = texttospeech.AudioConfig(
-                audio_encoding=texttospeech.AudioEncoding.MP3,
-                speaking_rate=1.0,  # Normal speed
-                pitch=0.0,  # Normal pitch
-            )
+                    # Save to temp file
+                    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.mp3')
+                    temp_file.write(response.audio_content)
+                    temp_file.close()
+                    temp_files.append(temp_file.name)
 
-            # Perform text-to-speech
-            response = self.client.synthesize_speech(
-                input=synthesis_input,
-                voice=voice,
-                audio_config=audio_config
-            )
+                # Concatenate all chunks
+                print(f"  Combining {len(temp_files)} audio chunks...")
+                combined = AudioSegment.empty()
+                for temp_file in temp_files:
+                    chunk_audio = AudioSegment.from_mp3(temp_file)
+                    combined += chunk_audio
+                    os.unlink(temp_file)  # Clean up temp file
 
-            # Save audio file
-            with open(output_path, 'wb') as out:
-                out.write(response.audio_content)
+                # Export combined audio
+                combined.export(output_path, format='mp3', bitrate='128k')
 
             # Record usage AFTER successful generation
             self._record_usage(script_length)
@@ -215,7 +223,60 @@ class AudioGenerator:
 
         except Exception as e:
             raise Exception(f"Failed to generate audio: {str(e)}")
-    
+
+    def _split_script(self, script: str, max_bytes: int = 4900) -> list:
+        """
+        Split script into chunks that fit within TTS byte limit.
+        Splits at sentence boundaries when possible.
+        """
+        if len(script.encode('utf-8')) <= max_bytes:
+            return [script]
+
+        chunks = []
+        current_chunk = ""
+
+        # Split by sentences
+        sentences = script.replace('! ', '!|').replace('? ', '?|').replace('. ', '.|').split('|')
+
+        for sentence in sentences:
+            test_chunk = current_chunk + sentence
+            if len(test_chunk.encode('utf-8')) > max_bytes:
+                if current_chunk:
+                    chunks.append(current_chunk.strip())
+                    current_chunk = sentence
+                else:
+                    # Single sentence is too long - force split
+                    chunks.append(sentence[:max_bytes].strip())
+                    current_chunk = sentence[max_bytes:]
+            else:
+                current_chunk = test_chunk
+
+        if current_chunk:
+            chunks.append(current_chunk.strip())
+
+        return chunks
+
+    def _synthesize_chunk(self, text: str, voice_name: str):
+        """Synthesize a single text chunk."""
+        synthesis_input = texttospeech.SynthesisInput(text=text)
+
+        voice = texttospeech.VoiceSelectionParams(
+            language_code='en-US',
+            name=voice_name
+        )
+
+        audio_config = texttospeech.AudioConfig(
+            audio_encoding=texttospeech.AudioEncoding.MP3,
+            speaking_rate=1.0,
+            pitch=0.0,
+        )
+
+        return self.client.synthesize_speech(
+            input=synthesis_input,
+            voice=voice,
+            audio_config=audio_config
+        )
+
     def get_available_voices(self) -> list:
         """Get list of available Neural2 voices for en-US."""
         try:
