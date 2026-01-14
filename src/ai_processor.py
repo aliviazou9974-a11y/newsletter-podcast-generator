@@ -17,10 +17,10 @@ class AIProcessor:
             raise ValueError("GEMINI_API_KEY environment variable must be set")
         
         genai.configure(api_key=api_key)
-        
-        # Use Gemini 2.0 Flash for free tier
-        self.model = genai.GenerativeModel('gemini-2.0-flash-exp')
-        
+
+        # Use Gemini 1.5 Flash for free tier (stable model with better quota)
+        self.model = genai.GenerativeModel('gemini-1.5-flash')
+
         print("✓ Gemini AI initialized")
     
     def create_podcast_script(self, newsletters: List[Dict]) -> str:
