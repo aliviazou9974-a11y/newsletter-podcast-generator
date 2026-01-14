@@ -1,0 +1,51 @@
+name: Daily Newsletter Podcast
+
+on:
+  schedule:
+    # Run at 8:00 AM PST (UTC-8) = 4:00 PM UTC
+    # Adjust this cron expression based on your timezone
+    # Format: minute hour day month day-of-week
+    - cron: '0 16 * * *'
+  
+  workflow_dispatch:  # Allow manual trigger for testing
+
+jobs:
+  generate-podcast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Run podcast generator
+        env:
+          GMAIL_CREDENTIALS: ${{ secrets.GMAIL_CREDENTIALS }}
+          GMAIL_TOKEN: ${{ secrets.GMAIL_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GOOGLE_TTS_CREDENTIALS: ${{ secrets.GOOGLE_TTS_CREDENTIALS }}
+          RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
+          NEWSLETTER_LABEL: ${{ secrets.NEWSLETTER_LABEL || 'newsletters-to-podcast' }}
+          TTS_VOICE_NAME: ${{ secrets.TTS_VOICE_NAME || 'en-US-Neural2-J' }}
+        run: |
+          cd src
+          python podcast_generator.py
+      
+      - name: Upload error logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: error-logs-${{ github.run_id }}
+          path: logs/
+          retention-days: 7
