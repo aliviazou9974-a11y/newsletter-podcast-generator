@@ -58,15 +58,19 @@ def main():
         
         # Generate audio
         print("Converting script to audio...")
-        podcast_file = audio_generator.generate_podcast(
+        podcast_file, usage_check = audio_generator.generate_podcast(
             script=script,
             voice_name=voice_name
         )
         print()
-        
+
         # Create email body
         email_body = ai_processor.create_notification_message(newsletters, podcast_file)
-        
+
+        # Add usage warning to email if threshold exceeded
+        if usage_check['percent'] >= AudioGenerator.WARNING_THRESHOLD_PCT:
+            email_body += f"\n\n---\n⚠️ TTS Usage Alert:\n{usage_check['message']}\n"
+
         # Send podcast via email
         print("Sending podcast via email...")
         gmail_client.send_email_with_attachment(
@@ -75,6 +79,33 @@ def main():
             body=email_body,
             attachment_path=podcast_file
         )
+        print()
+
+        # Send separate alert email if critical threshold reached
+        if usage_check['percent'] >= AudioGenerator.CRITICAL_THRESHOLD_PCT:
+            print("⚠️ Sending critical usage alert...")
+            gmail_client.send_email_with_attachment(
+                recipient=recipient_email,
+                subject="🚨 CRITICAL: TTS Free Tier Almost Exhausted",
+                body=f"""CRITICAL ALERT: Your Text-to-Speech free tier usage is at {usage_check['percent']:.1f}%!
+
+Current usage: {usage_check['current_usage']:,}/{usage_check['limit']:,} characters
+Remaining: {usage_check['remaining']:,} characters
+
+The system will automatically stop generating podcasts if you hit 100% to prevent charges.
+
+Actions you can take:
+1. Wait until next month (usage resets monthly)
+2. Add a billing account and upgrade to paid tier
+3. Reduce podcast length in the code
+
+Monthly usage resets on: {datetime.now().strftime('%Y-%m-01')}
+
+This is an automated alert from newsletter-podcast-generator.
+""",
+                attachment_path=None
+            )
+            print("✓ Critical alert sent")
         print()
         
         # Mark newsletters as processed

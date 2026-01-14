@@ -60,6 +60,9 @@ temp/
 *.mp3
 *.wav
 
+# Usage tracking
+tts_usage.json
+
 # Testing
 .pytest_cache/
 .coverage
