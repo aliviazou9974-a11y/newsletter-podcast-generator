@@ -2,11 +2,11 @@ name: Daily Newsletter Podcast
 
 on:
   schedule:
-    # Run at 8:00 AM PST (UTC-8) = 4:00 PM UTC
+    # Run at 8:00 AM EST (UTC-5) = 1:00 PM UTC
     # Adjust this cron expression based on your timezone
     # Format: minute hour day month day-of-week
-    - cron: '0 16 * * *'
-  
+    - cron: '0 13 * * *'
+
   workflow_dispatch:  # Allow manual trigger for testing
 
 jobs:
