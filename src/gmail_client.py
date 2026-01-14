@@ -67,7 +67,7 @@ class GmailClient:
     
     def fetch_newsletters(self, label_name: str = 'newsletters-to-podcast') -> List[Dict]:
         """
-        Fetch unread emails with specified label from last 24 hours.
+        Fetch all emails (read or unread) with specified label from last 24 hours.
 
         Args:
             label_name: Gmail label to filter by
@@ -87,8 +87,8 @@ class GmailClient:
             # Calculate date for 24 hours ago (Gmail format: YYYY/MM/DD)
             yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y/%m/%d')
 
-            # Search for messages: unread, with label, from last 24 hours only
-            query = f'label:{label_name} is:unread after:{yesterday}'
+            # Search for messages: with label, from last 24 hours only (read or unread)
+            query = f'label:{label_name} after:{yesterday}'
             print(f"Searching for: {query}")
 
             results = self.service.users().messages().list(
@@ -232,13 +232,13 @@ class GmailClient:
             
             for msg_id in message_ids:
                 try:
-                    # Modify labels
+                    # Modify labels (remove source label, add processed label, keep read/unread status)
                     self._retry_api_call(
                         lambda: self.service.users().messages().modify(
                             userId='me',
                             id=msg_id,
                             body={
-                                'removeLabelIds': [source_label_id, 'UNREAD'],
+                                'removeLabelIds': [source_label_id],
                                 'addLabelIds': [processed_label_id]
                             }
                         ).execute()
