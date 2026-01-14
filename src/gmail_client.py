@@ -68,24 +68,29 @@ class GmailClient:
     def fetch_newsletters(self, label_name: str = 'newsletters-to-podcast') -> List[Dict]:
         """
         Fetch unread emails with specified label from last 24 hours.
-        
+
         Args:
             label_name: Gmail label to filter by
-            
+
         Returns:
             List of newsletter dicts with id, subject, sender, body, date
         """
         try:
             newsletters = []
-            
+
             # Get label ID
             label_id = self._get_label_id(label_name)
             if not label_id:
                 print(f"⚠ Label '{label_name}' not found. Please create it in Gmail.")
                 return newsletters
-            
-            # Search for messages
-            query = f'label:{label_name} is:unread'
+
+            # Calculate date for 24 hours ago (Gmail format: YYYY/MM/DD)
+            yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y/%m/%d')
+
+            # Search for messages: unread, with label, from last 24 hours only
+            query = f'label:{label_name} is:unread after:{yesterday}'
+            print(f"Searching for: {query}")
+
             results = self.service.users().messages().list(
                 userId='me',
                 q=query,
