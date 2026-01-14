@@ -18,8 +18,8 @@ class AIProcessor:
         
         genai.configure(api_key=api_key)
 
-        # Use Gemini Pro for free tier (stable, widely available model)
-        self.model = genai.GenerativeModel('gemini-pro')
+        # Use Gemini 1.5 Flash - free tier model
+        self.model = genai.GenerativeModel('gemini-1.5-flash')
 
         print("✓ Gemini AI initialized")
     
