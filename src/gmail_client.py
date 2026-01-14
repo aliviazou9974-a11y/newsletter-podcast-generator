@@ -43,14 +43,15 @@ class GmailClient:
             # Parse credentials
             creds_info = json.loads(creds_json)
             token_info = json.loads(token_json)
-            
-            # Create credentials object
+
+            # Create credentials object using token_info for all fields
+            # (token_info contains everything we need from the generated token)
             creds = Credentials(
                 token=token_info.get('token'),
                 refresh_token=token_info.get('refresh_token'),
-                token_uri=creds_info.get('token_uri', 'https://oauth2.googleapis.com/token'),
-                client_id=creds_info.get('client_id'),
-                client_secret=creds_info.get('client_secret'),
+                token_uri=token_info.get('token_uri', 'https://oauth2.googleapis.com/token'),
+                client_id=token_info.get('client_id'),
+                client_secret=token_info.get('client_secret'),
                 scopes=self.SCOPES
             )
             
