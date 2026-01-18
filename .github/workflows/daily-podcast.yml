@@ -2,10 +2,10 @@ name: Daily Newsletter Podcast
 
 on:
   schedule:
-    # Run at 8:00 AM EST (UTC-5) = 1:00 PM UTC
-    # Adjust this cron expression based on your timezone
-    # Format: minute hour day month day-of-week
-    - cron: '0 13 * * *'
+    # Run at 7:30 AM Eastern to account for GitHub Actions delays (5-60 min)
+    # Winter (EST): 7:30am = 12:30pm UTC
+    # Summer (EDT): This becomes 8:30am EDT (acceptable tradeoff)
+    - cron: '30 12 * * *'
 
   workflow_dispatch:  # Allow manual trigger for testing
 

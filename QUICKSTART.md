@@ -24,7 +24,7 @@ Get your newsletter podcast system running in 30 minutes!
    - Application type: Desktop app
    - Name: "Newsletter Podcast Desktop"
    - Click Create → Download JSON
-   - Save as `gmail_credentials.json` (keep it secret!)
+   - Save as `credentials/gmail_credentials.json` (keep it secret!)
 
 4. **Create Service Account**
    - Go to "IAM & Admin > Service Accounts"
@@ -36,7 +36,7 @@ Get your newsletter podcast system running in 30 minutes!
    - Click on the service account email
    - Go to "Keys" tab → "Add Key" → "Create new key"
    - Key type: JSON → Create
-   - Save as `tts_credentials.json` (keep it secret!)
+   - Save as `credentials/tts_credentials.json` (keep it secret!)
 
 5. **Get Gemini API Key**
    - Go to https://aistudio.google.com/app/apikey
@@ -53,7 +53,7 @@ Get your newsletter podcast system running in 30 minutes!
 
 2. **Run token generator**
    ```bash
-   python generate_gmail_token.py
+   python scripts/generate_gmail_token.py
    ```
 
 3. **Complete authentication**
@@ -64,7 +64,7 @@ Get your newsletter podcast system running in 30 minutes!
    - Close the browser
 
 4. **Verify token created**
-   - Check that `gmail_token.json` was created
+   - Check that `credentials/gmail_token.json` was created
    - Keep it secret!
 
 ## Step 3: Set Up Gmail Label (2 minutes)
@@ -96,10 +96,10 @@ Get your newsletter podcast system running in 30 minutes!
 
    | Name | Value |
    |------|-------|
-   | `GMAIL_CREDENTIALS` | Paste entire contents of `gmail_credentials.json` |
-   | `GMAIL_TOKEN` | Paste entire contents of `gmail_token.json` |
+   | `GMAIL_CREDENTIALS` | Paste entire contents of `credentials/gmail_credentials.json` |
+   | `GMAIL_TOKEN` | Paste entire contents of `credentials/gmail_token.json` |
    | `GEMINI_API_KEY` | Your Gemini API key (AIza...) |
-   | `GOOGLE_TTS_CREDENTIALS` | Paste entire contents of `tts_credentials.json` |
+   | `GOOGLE_TTS_CREDENTIALS` | Paste entire contents of `credentials/tts_credentials.json` |
    | `RECIPIENT_EMAIL` | Your Gmail address |
 
 4. **Optional secrets** (use defaults if you skip these):
@@ -159,7 +159,7 @@ Your system is now running! Every morning at 8 AM:
 - Make sure you have newsletters labeled
 
 **Authentication errors?**
-- Re-run `generate_gmail_token.py`
+- Re-run `python scripts/generate_gmail_token.py`
 - Double-check credentials JSON files are complete
 - Verify service account has TTS role
 

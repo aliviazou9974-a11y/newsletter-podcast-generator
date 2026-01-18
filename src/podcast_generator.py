@@ -4,6 +4,13 @@ import os
 import sys
 from datetime import datetime
 from typing import Optional
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Load .env from project root
+env_path = Path(__file__).parent.parent / '.env'
+load_dotenv(env_path)
 
 from gmail_client import GmailClient
 from ai_processor import AIProcessor

@@ -42,7 +42,7 @@ Automated system that converts your Gmail newsletters into AI-generated podcasts
    - Application type: Desktop app
    - Name: "Newsletter Podcast Desktop"
 5. Download the credentials JSON file
-6. Save it as `gmail_credentials.json`
+6. Save it as `credentials/gmail_credentials.json`
 
 ### 3. Generate Gmail Refresh Token
 
@@ -61,7 +61,7 @@ SCOPES = [
 ]
 
 flow = InstalledAppFlow.from_client_secrets_file(
-    'gmail_credentials.json', SCOPES)
+    'credentials/gmail_credentials.json', SCOPES)
 creds = flow.run_local_server(port=0)
 
 token_data = {
@@ -73,19 +73,19 @@ token_data = {
     'scopes': creds.scopes
 }
 
-with open('gmail_token.json', 'w') as f:
+with open('credentials/gmail_token.json', 'w') as f:
     json.dump(token_data, f, indent=2)
 
-print("✓ Token saved to gmail_token.json")
+print("✓ Token saved to credentials/gmail_token.json")
 ```
 
 Run it:
 ```bash
 pip install google-auth-oauthlib
-python generate_gmail_token.py
+python scripts/generate_gmail_token.py
 ```
 
-This will open a browser for authentication. Complete the flow to generate `gmail_token.json`.
+This will open a browser for authentication. Complete the flow to generate `credentials/gmail_token.json`.
 
 ### 4. Google Cloud Text-to-Speech Setup
 
@@ -94,7 +94,7 @@ This will open a browser for authentication. Complete the flow to generate `gmai
    - Name: "newsletter-podcast-tts"
    - Role: Cloud Text-to-Speech User
 3. Click **Create Key** > JSON
-4. Download and save as `tts_credentials.json`
+4. Download and save as `credentials/tts_credentials.json`
 
 ### 5. Google Gemini API Setup
 
@@ -124,10 +124,10 @@ Add the following secrets to your GitHub repository:
 
 | Secret Name | Value | How to Get |
 |-------------|-------|------------|
-| `GMAIL_CREDENTIALS` | Content of `gmail_credentials.json` | Copy entire JSON file content |
-| `GMAIL_TOKEN` | Content of `gmail_token.json` | Copy entire JSON file content |
+| `GMAIL_CREDENTIALS` | Content of `credentials/gmail_credentials.json` | Copy entire JSON file content |
+| `GMAIL_TOKEN` | Content of `credentials/gmail_token.json` | Copy entire JSON file content |
 | `GEMINI_API_KEY` | Your Gemini API key | From Google AI Studio |
-| `GOOGLE_TTS_CREDENTIALS` | Content of `tts_credentials.json` | Copy entire JSON file content |
+| `GOOGLE_TTS_CREDENTIALS` | Content of `credentials/tts_credentials.json` | Copy entire JSON file content |
 | `RECIPIENT_EMAIL` | Your email address | Your Gmail address for delivery |
 
 **Optional secrets:**
@@ -191,6 +191,15 @@ newsletter-podcast-generator/
 │   ├── podcast_generator.py       # Main orchestrator
 │   ├── ai_processor.py            # Gemini AI summarization
 │   └── audio_generator.py         # Google TTS
+├── credentials/                    # Secret files (git-ignored)
+│   ├── gmail_credentials.json     # OAuth client credentials
+│   ├── gmail_token.json           # Gmail refresh token
+│   └── tts_credentials.json       # TTS service account
+├── scripts/                        # Utility scripts
+│   ├── generate_gmail_token.py    # Token generation helper
+│   └── gemini_test.py             # API testing utility
+├── experiments/                    # Experimental code
+│   └── gemini.mjs                 # Node.js alternative
 ├── docs/
 │   └── plans/
 │       └── 2026-01-13-newsletter-podcast-generator-design.md
