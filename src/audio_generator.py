@@ -2,6 +2,7 @@
 
 import os
 import json
+import re
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -17,6 +18,8 @@ class AudioGenerator:
     MONTHLY_CHAR_LIMIT = 1_000_000
     WARNING_THRESHOLD_PCT = 80  # Warn at 80% usage
     CRITICAL_THRESHOLD_PCT = 90  # Critical alert at 90% usage
+    # Google TTS has a limit on sentence length (approx 500 chars recommended)
+    MAX_SENTENCE_LENGTH = 400
 
     def __init__(self):
         """Initialize Google Cloud TTS client."""
@@ -224,11 +227,82 @@ class AudioGenerator:
         except Exception as e:
             raise Exception(f"Failed to generate audio: {str(e)}")
 
+    def _break_long_sentence(self, sentence: str) -> list:
+        """
+        Break a long sentence into smaller parts at natural punctuation points.
+        Google TTS fails on sentences that are too long.
+        """
+        if len(sentence) <= self.MAX_SENTENCE_LENGTH:
+            return [sentence]
+
+        parts = []
+        remaining = sentence
+
+        while len(remaining) > self.MAX_SENTENCE_LENGTH:
+            # Find the best break point within the limit
+            break_point = self.MAX_SENTENCE_LENGTH
+
+            # Try to break at natural punctuation: semicolon, colon, dash, comma
+            search_area = remaining[:self.MAX_SENTENCE_LENGTH]
+
+            # Prefer breaking at stronger punctuation first
+            for punct in ['; ', ': ', ' - ', ' -- ', ', ']:
+                last_pos = search_area.rfind(punct)
+                if last_pos > self.MAX_SENTENCE_LENGTH // 3:  # Don't break too early
+                    break_point = last_pos + len(punct)
+                    break
+
+            # If no punctuation found, break at last space
+            if break_point == self.MAX_SENTENCE_LENGTH:
+                last_space = search_area.rfind(' ')
+                if last_space > self.MAX_SENTENCE_LENGTH // 2:
+                    break_point = last_space + 1
+
+            part = remaining[:break_point].strip()
+            if part:
+                # Add period if the part doesn't end with punctuation
+                if part and part[-1] not in '.!?;:,':
+                    part += '.'
+                parts.append(part)
+
+            remaining = remaining[break_point:].strip()
+
+        if remaining:
+            parts.append(remaining)
+
+        return parts
+
+    def _preprocess_script(self, script: str) -> str:
+        """
+        Preprocess script to ensure all sentences are within TTS limits.
+        """
+        # Split into sentences
+        sentence_pattern = r'(?<=[.!?])\s+'
+        sentences = re.split(sentence_pattern, script)
+
+        processed_sentences = []
+        for sentence in sentences:
+            sentence = sentence.strip()
+            if not sentence:
+                continue
+
+            if len(sentence) > self.MAX_SENTENCE_LENGTH:
+                # Break long sentence into smaller parts
+                parts = self._break_long_sentence(sentence)
+                processed_sentences.extend(parts)
+            else:
+                processed_sentences.append(sentence)
+
+        return ' '.join(processed_sentences)
+
     def _split_script(self, script: str, max_bytes: int = 4900) -> list:
         """
         Split script into chunks that fit within TTS byte limit.
-        Splits at sentence boundaries when possible.
+        First breaks long sentences, then splits at sentence boundaries.
         """
+        # First, preprocess to break any long sentences
+        script = self._preprocess_script(script)
+
         if len(script.encode('utf-8')) <= max_bytes:
             return [script]
 
@@ -245,9 +319,18 @@ class AudioGenerator:
                     chunks.append(current_chunk.strip())
                     current_chunk = sentence
                 else:
-                    # Single sentence is too long - force split
-                    chunks.append(sentence[:max_bytes].strip())
-                    current_chunk = sentence[max_bytes:]
+                    # Single sentence is still too long after preprocessing - force split at word boundary
+                    words = sentence.split()
+                    temp = ""
+                    for word in words:
+                        test = temp + " " + word if temp else word
+                        if len(test.encode('utf-8')) > max_bytes:
+                            if temp:
+                                chunks.append(temp.strip())
+                            temp = word
+                        else:
+                            temp = test
+                    current_chunk = temp
             else:
                 current_chunk = test_chunk
 
