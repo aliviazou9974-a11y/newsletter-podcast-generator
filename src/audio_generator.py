@@ -18,8 +18,8 @@ class AudioGenerator:
     MONTHLY_CHAR_LIMIT = 1_000_000
     WARNING_THRESHOLD_PCT = 80  # Warn at 80% usage
     CRITICAL_THRESHOLD_PCT = 90  # Critical alert at 90% usage
-    # Google TTS has a limit on sentence length (approx 500 chars recommended)
-    MAX_SENTENCE_LENGTH = 400
+    # Google TTS has a limit on sentence length - be conservative
+    MAX_SENTENCE_LENGTH = 250
 
     def __init__(self):
         """Initialize Google Cloud TTS client."""
@@ -239,29 +239,33 @@ class AudioGenerator:
         remaining = sentence
 
         while len(remaining) > self.MAX_SENTENCE_LENGTH:
-            # Find the best break point within the limit
-            break_point = self.MAX_SENTENCE_LENGTH
+            search_area = remaining[:self.MAX_SENTENCE_LENGTH]
+            break_point = None
 
             # Try to break at natural punctuation: semicolon, colon, dash, comma
-            search_area = remaining[:self.MAX_SENTENCE_LENGTH]
-
-            # Prefer breaking at stronger punctuation first
-            for punct in ['; ', ': ', ' - ', ' -- ', ', ']:
+            # Look for the last occurrence of each, prefer stronger punctuation
+            for punct in ['. ', '! ', '? ', '; ', ': ', ' - ', ' -- ', ', ', ' ']:
                 last_pos = search_area.rfind(punct)
-                if last_pos > self.MAX_SENTENCE_LENGTH // 3:  # Don't break too early
+                # Accept break point if it's not too early (at least 1/4 into the text)
+                if last_pos > self.MAX_SENTENCE_LENGTH // 4:
                     break_point = last_pos + len(punct)
                     break
 
-            # If no punctuation found, break at last space
-            if break_point == self.MAX_SENTENCE_LENGTH:
+            # If still no break point, force break at last space
+            if break_point is None:
                 last_space = search_area.rfind(' ')
-                if last_space > self.MAX_SENTENCE_LENGTH // 2:
+                if last_space > 0:
                     break_point = last_space + 1
+                else:
+                    # No space at all - hard break (shouldn't happen with normal text)
+                    break_point = self.MAX_SENTENCE_LENGTH
 
             part = remaining[:break_point].strip()
             if part:
-                # Add period if the part doesn't end with punctuation
-                if part and part[-1] not in '.!?;:,':
+                # Add period if the part doesn't end with sentence-ending punctuation
+                if part[-1] not in '.!?':
+                    # Remove trailing comma/semicolon before adding period
+                    part = part.rstrip(',;:')
                     part += '.'
                 parts.append(part)
 
@@ -275,25 +279,56 @@ class AudioGenerator:
     def _preprocess_script(self, script: str) -> str:
         """
         Preprocess script to ensure all sentences are within TTS limits.
+        Uses aggressive splitting to avoid Google TTS sentence length errors.
         """
-        # Split into sentences
-        sentence_pattern = r'(?<=[.!?])\s+'
-        sentences = re.split(sentence_pattern, script)
+        # First, normalize newlines and split on them
+        script = script.replace('\r\n', '\n').replace('\r', '\n')
 
-        processed_sentences = []
-        for sentence in sentences:
-            sentence = sentence.strip()
-            if not sentence:
+        # Split on sentence endings AND newlines
+        # This pattern splits on .!? followed by space/newline, or just newlines
+        segments = re.split(r'(?<=[.!?])\s+|\n+', script)
+
+        processed = []
+        for segment in segments:
+            segment = segment.strip()
+            if not segment:
                 continue
 
-            if len(sentence) > self.MAX_SENTENCE_LENGTH:
-                # Break long sentence into smaller parts
-                parts = self._break_long_sentence(sentence)
-                processed_sentences.extend(parts)
+            # If segment is short enough, keep it
+            if len(segment) <= self.MAX_SENTENCE_LENGTH:
+                processed.append(segment)
             else:
-                processed_sentences.append(sentence)
+                # Break long segment into smaller parts
+                parts = self._break_long_sentence(segment)
+                processed.extend(parts)
 
-        return ' '.join(processed_sentences)
+        # Join and do a final safety check - split any remaining long segments
+        result = ' '.join(processed)
+
+        # Final pass: ensure no segment between periods is too long
+        final_parts = []
+        for part in result.split('. '):
+            part = part.strip()
+            if not part:
+                continue
+            if len(part) <= self.MAX_SENTENCE_LENGTH:
+                final_parts.append(part)
+            else:
+                # Force break at word boundaries
+                words = part.split()
+                current = ""
+                for word in words:
+                    test = current + " " + word if current else word
+                    if len(test) > self.MAX_SENTENCE_LENGTH:
+                        if current:
+                            final_parts.append(current.rstrip(',;:') + '.')
+                        current = word
+                    else:
+                        current = test
+                if current:
+                    final_parts.append(current)
+
+        return '. '.join(final_parts)
 
     def _split_script(self, script: str, max_bytes: int = 4900) -> list:
         """
