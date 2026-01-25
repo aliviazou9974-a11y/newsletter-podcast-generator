@@ -330,7 +330,7 @@ class AudioGenerator:
     def _force_break_text(self, text: str) -> list:
         """
         Force break text into chunks of MAX_SENTENCE_LENGTH or less.
-        Tries to break at word boundaries, adding periods for TTS pacing.
+        Tries to break at word boundaries. Each part will be wrapped in SSML <s> tags.
         """
         if len(text) <= self.MAX_SENTENCE_LENGTH:
             return [text]
@@ -343,20 +343,15 @@ class AudioGenerator:
             test = current + " " + word if current else word
             if len(test) > self.MAX_SENTENCE_LENGTH:
                 if current:
-                    # Clean up and add period if needed
+                    # Clean up trailing punctuation that would sound odd
                     current = current.strip().rstrip(',;:')
-                    if current and current[-1] not in '.!?':
-                        current += '.'
                     parts.append(current)
                 current = word
             else:
                 current = test
 
         if current:
-            current = current.strip()
-            if current and current[-1] not in '.!?':
-                current += '.'
-            parts.append(current)
+            parts.append(current.strip())
 
         return parts
 
@@ -404,26 +399,47 @@ class AudioGenerator:
 
         return chunks
 
-    def _synthesize_chunk(self, text: str, voice_name: str):
-        """Synthesize a single text chunk."""
-        # Final safety check: ensure no sentences are too long
-        # Split on sentence endings and check each part
-        parts = re.split(r'([.!?]+)', text)
-        safe_parts = []
-        for i in range(0, len(parts), 2):
-            segment = parts[i] if i < len(parts) else ""
-            punct = parts[i + 1] if i + 1 < len(parts) else ""
+    def _text_to_ssml(self, text: str) -> str:
+        """
+        Convert plain text to SSML with explicit sentence tags.
+        This gives us full control over sentence boundaries.
+        """
+        # Escape XML special characters
+        text = text.replace('&', '&amp;')
+        text = text.replace('<', '&lt;')
+        text = text.replace('>', '&gt;')
+        text = text.replace('"', '&quot;')
+        text = text.replace("'", '&apos;')
 
-            if len(segment) > self.MAX_SENTENCE_LENGTH:
-                # Force break this segment
-                broken = self._force_break_text(segment)
-                safe_parts.extend(broken)
+        # Split into sentences and wrap each in <s> tags
+        # Split on sentence-ending punctuation
+        sentences = re.split(r'(?<=[.!?])\s+', text)
+
+        ssml_sentences = []
+        for sentence in sentences:
+            sentence = sentence.strip()
+            if not sentence:
+                continue
+
+            # If sentence is too long, break it further
+            if len(sentence) > self.MAX_SENTENCE_LENGTH:
+                parts = self._force_break_text(sentence)
+                for part in parts:
+                    part = part.strip()
+                    if part:
+                        ssml_sentences.append(f'<s>{part}</s>')
             else:
-                safe_parts.append(segment + punct)
+                ssml_sentences.append(f'<s>{sentence}</s>')
 
-        text = ' '.join(safe_parts)
+        ssml = '<speak>' + ''.join(ssml_sentences) + '</speak>'
+        return ssml
 
-        synthesis_input = texttospeech.SynthesisInput(text=text)
+    def _synthesize_chunk(self, text: str, voice_name: str):
+        """Synthesize a single text chunk using SSML for precise sentence control."""
+        # Convert to SSML with explicit sentence boundaries
+        ssml = self._text_to_ssml(text)
+
+        synthesis_input = texttospeech.SynthesisInput(ssml=ssml)
 
         voice = texttospeech.VoiceSelectionParams(
             language_code='en-US',
