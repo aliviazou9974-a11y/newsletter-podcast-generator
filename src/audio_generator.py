@@ -18,8 +18,8 @@ class AudioGenerator:
     MONTHLY_CHAR_LIMIT = 1_000_000
     WARNING_THRESHOLD_PCT = 80  # Warn at 80% usage
     CRITICAL_THRESHOLD_PCT = 90  # Critical alert at 90% usage
-    # Google TTS has a limit on sentence length - be conservative
-    MAX_SENTENCE_LENGTH = 250
+    # Google TTS has a limit on sentence length - be very conservative
+    MAX_SENTENCE_LENGTH = 200
 
     def __init__(self):
         """Initialize Google Cloud TTS client."""
@@ -187,9 +187,15 @@ class AudioGenerator:
             chunks = self._split_script(script, max_bytes=4900)
             print(f"Split into {len(chunks)} chunk(s)")
 
+            # Debug: show max sentence length in each chunk
+            for i, chunk in enumerate(chunks, 1):
+                sentences = re.split(r'[.!?]+', chunk)
+                max_sent_len = max(len(s.strip()) for s in sentences if s.strip()) if sentences else 0
+                print(f"  Chunk {i}: {len(chunk)} chars, longest sentence: {max_sent_len} chars")
+
             if len(chunks) == 1:
                 # Single chunk - process normally
-                response = self._synthesize_chunk(script, voice_name)
+                response = self._synthesize_chunk(chunks[0], voice_name)
                 with open(output_path, 'wb') as out:
                     out.write(response.audio_content)
             else:
@@ -281,54 +287,78 @@ class AudioGenerator:
         Preprocess script to ensure all sentences are within TTS limits.
         Uses aggressive splitting to avoid Google TTS sentence length errors.
         """
-        # First, normalize newlines and split on them
-        script = script.replace('\r\n', '\n').replace('\r', '\n')
+        # Remove any SSML-like tags that might confuse TTS (e.g., <s>, <break>, etc.)
+        script = re.sub(r'<[^>]+>', '', script)
 
-        # Split on sentence endings AND newlines
-        # This pattern splits on .!? followed by space/newline, or just newlines
-        segments = re.split(r'(?<=[.!?])\s+|\n+', script)
+        # Remove any markdown-style formatting that might cause issues
+        script = re.sub(r'\*+', '', script)  # Remove asterisks
+        script = re.sub(r'_+', ' ', script)  # Replace underscores with spaces
+        script = re.sub(r'#+\s*', '', script)  # Remove markdown headers
 
-        processed = []
-        for segment in segments:
-            segment = segment.strip()
+        # Normalize whitespace
+        script = re.sub(r'\s+', ' ', script).strip()
+
+        # Now aggressively split the text to ensure no segment is too long
+        # Split on ANY punctuation that could end or pause a sentence
+        segments = re.split(r'([.!?;:])\s*', script)
+
+        # Reconstruct with punctuation attached
+        reconstructed = []
+        i = 0
+        while i < len(segments):
+            segment = segments[i].strip()
+            # Attach punctuation if next element is punctuation
+            if i + 1 < len(segments) and segments[i + 1] in '.!?;:':
+                segment += segments[i + 1]
+                i += 2
+            else:
+                i += 1
+
             if not segment:
                 continue
 
             # If segment is short enough, keep it
             if len(segment) <= self.MAX_SENTENCE_LENGTH:
-                processed.append(segment)
+                reconstructed.append(segment)
             else:
-                # Break long segment into smaller parts
-                parts = self._break_long_sentence(segment)
-                processed.extend(parts)
+                # Force break this segment
+                parts = self._force_break_text(segment)
+                reconstructed.extend(parts)
 
-        # Join and do a final safety check - split any remaining long segments
-        result = ' '.join(processed)
+        return ' '.join(reconstructed)
 
-        # Final pass: ensure no segment between periods is too long
-        final_parts = []
-        for part in result.split('. '):
-            part = part.strip()
-            if not part:
-                continue
-            if len(part) <= self.MAX_SENTENCE_LENGTH:
-                final_parts.append(part)
-            else:
-                # Force break at word boundaries
-                words = part.split()
-                current = ""
-                for word in words:
-                    test = current + " " + word if current else word
-                    if len(test) > self.MAX_SENTENCE_LENGTH:
-                        if current:
-                            final_parts.append(current.rstrip(',;:') + '.')
-                        current = word
-                    else:
-                        current = test
+    def _force_break_text(self, text: str) -> list:
+        """
+        Force break text into chunks of MAX_SENTENCE_LENGTH or less.
+        Tries to break at word boundaries, adding periods for TTS pacing.
+        """
+        if len(text) <= self.MAX_SENTENCE_LENGTH:
+            return [text]
+
+        parts = []
+        words = text.split()
+        current = ""
+
+        for word in words:
+            test = current + " " + word if current else word
+            if len(test) > self.MAX_SENTENCE_LENGTH:
                 if current:
-                    final_parts.append(current)
+                    # Clean up and add period if needed
+                    current = current.strip().rstrip(',;:')
+                    if current and current[-1] not in '.!?':
+                        current += '.'
+                    parts.append(current)
+                current = word
+            else:
+                current = test
 
-        return '. '.join(final_parts)
+        if current:
+            current = current.strip()
+            if current and current[-1] not in '.!?':
+                current += '.'
+            parts.append(current)
+
+        return parts
 
     def _split_script(self, script: str, max_bytes: int = 4900) -> list:
         """
@@ -376,6 +406,23 @@ class AudioGenerator:
 
     def _synthesize_chunk(self, text: str, voice_name: str):
         """Synthesize a single text chunk."""
+        # Final safety check: ensure no sentences are too long
+        # Split on sentence endings and check each part
+        parts = re.split(r'([.!?]+)', text)
+        safe_parts = []
+        for i in range(0, len(parts), 2):
+            segment = parts[i] if i < len(parts) else ""
+            punct = parts[i + 1] if i + 1 < len(parts) else ""
+
+            if len(segment) > self.MAX_SENTENCE_LENGTH:
+                # Force break this segment
+                broken = self._force_break_text(segment)
+                safe_parts.extend(broken)
+            else:
+                safe_parts.append(segment + punct)
+
+        text = ' '.join(safe_parts)
+
         synthesis_input = texttospeech.SynthesisInput(text=text)
 
         voice = texttospeech.VoiceSelectionParams(
