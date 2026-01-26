@@ -405,12 +405,12 @@ class AudioGenerator:
         Convert plain text to SSML with explicit sentence tags.
         This gives us full control over sentence boundaries.
         """
-        # Escape XML special characters
+        # Escape XML special characters (only the essential ones for SSML)
+        # Note: &apos; is NOT valid in SSML (XML 1.0), so we don't escape single quotes
+        # Single quotes and double quotes are fine in text content
         text = text.replace('&', '&amp;')
         text = text.replace('<', '&lt;')
         text = text.replace('>', '&gt;')
-        text = text.replace('"', '&quot;')
-        text = text.replace("'", '&apos;')
 
         # Split into sentences and wrap each in <s> tags
         # Split on sentence-ending punctuation
