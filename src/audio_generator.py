@@ -184,7 +184,8 @@ class AudioGenerator:
 
         try:
             # Split script into chunks if needed (TTS limit is 5000 bytes)
-            chunks = self._split_script(script, max_bytes=4900)
+            # Use 3000 bytes to leave room for SSML overhead (~1500-2000 bytes for tags + escaping)
+            chunks = self._split_script(script, max_bytes=3000)
             print(f"Split into {len(chunks)} chunk(s)")
 
             # Debug: show max sentence length in each chunk
@@ -438,6 +439,15 @@ class AudioGenerator:
         """Synthesize a single text chunk using SSML for precise sentence control."""
         # Convert to SSML with explicit sentence boundaries
         ssml = self._text_to_ssml(text)
+
+        # Safety check: verify SSML is under 5000 bytes
+        ssml_bytes = len(ssml.encode('utf-8'))
+        if ssml_bytes > 5000:
+            raise ValueError(
+                f"SSML chunk exceeds 5000 byte limit ({ssml_bytes} bytes). "
+                f"Original text was {len(text)} chars. This shouldn't happen - please report this bug."
+            )
+        print(f"    SSML size: {ssml_bytes} bytes")
 
         synthesis_input = texttospeech.SynthesisInput(ssml=ssml)
 
